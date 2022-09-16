@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "C:/raylib/raylib/examples/textures/resources"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.ejs": "html",
+			"raylib.h": "c",
+			"math.h": "c",
+			"blocks.h": "c",
+			"stdio.h": "c",
+			"*.m": "c",
+			"*.tcc": "c",
+			"type_traits": "c"
+		}
+	}
+}
