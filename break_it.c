@@ -2,13 +2,14 @@
 
 #define MAX_ROWS 4
 #define MAX_COLS 11
-#define MAX_PARTICLES 100
+#define MAX_PARTICLES 50
 #define BALL_SPEED 200
 #define PAD_SPEED 700
 #define SPRITE_SIZE 32
 #define BRICK_TIER 5
 #define BRICK_WIDTH 64
 #define BRICK_HEIGHT 32
+#define MAX_EMITTERS 3
 
 typedef struct Ball
 {
@@ -57,15 +58,22 @@ typedef struct ParticleSystem
     float fade;
 } ParticleSystem;
 
+typedef struct Emitter
+{
+    ParticleSystem particleSys;
+    bool active;
+} Emitter;
+
 void initBricks(Brick bricks[MAX_ROWS][MAX_COLS], int level);
-void initParticleSystem(ParticleSystem *particleSystem, Rectangle area, float radius, float gravity, float fade, Color color);
+void initEmitter(Emitter emitters[], Rectangle area, float radius, float gravity, float fade, Color color);
+void initParticleSystem(ParticleSystem *particleSystem);
 void updateBall(Ball *ball);
 void resetBall(Ball *ball, float x, float y);
 bool paddleCollision(Ball *ball, Paddle *paddle);
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, ParticleSystem *particleSys);
+void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter emitters[]);
 void drawBricks(Brick bricks[MAX_ROWS][MAX_COLS], int rows, int cols, Texture2D spriteSheet, Rectangle srcRect);
-void drawParticleSystem(ParticleSystem *particleSystem);
-void updateParticleSystem(ParticleSystem *particleSystem);
+void drawParticleSystem(ParticleSystem particleSys);
+void updateParticleSystem(Emitter emitters[]);
 void drawHearts(Texture2D spriteSheet, Rectangle srcRect, float x, float y, int lives);
 Rectangle getRect(float x, float y, int width, int height);
 
@@ -97,7 +105,9 @@ int main(void)
     bool activeBtn = false;
     bool victory = false;
 
-    ParticleSystem particleSystem = {0};
+    Emitter emitters[MAX_EMITTERS];
+    for (int e = 0; e < MAX_EMITTERS; e++)
+        emitters[e].active = false;
 
     Ball ball;
     ball.x = screenWidth / 2;
@@ -195,9 +205,9 @@ int main(void)
             // if (paddleCollision(&ball, &paddle))
             //     PlaySound(fxBounce);
             paddleCollision(&ball, &paddle);
-            brickCollisions(&ball, bricks, &score, &particleSystem);
+            brickCollisions(&ball, bricks, &score, emitters);
             updateBall(&ball);
-            updateParticleSystem(&particleSystem);
+            updateParticleSystem(emitters);
 
             if (ball.y >= screenHeight + SPRITE_SIZE)
             {
@@ -219,6 +229,7 @@ int main(void)
         BeginDrawing();
 
         ClearBackground(SKYBLUE);
+        DrawFPS(10, 10);
         if (!playing)
         {
             ClearBackground(SKYBLUE);
@@ -233,7 +244,7 @@ int main(void)
         if (lives <= 0)
         {
             ClearBackground(RAYWHITE);
-            DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 200) / 2, screenHeight / 2, 200, MAROON);
+            DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 150) / 2, screenHeight / 2, 150, MAROON);
             EndDrawing();
             continue;
         }
@@ -257,7 +268,12 @@ int main(void)
         {
             DrawText("Press SPACE to start...", screenWidth / 2 - MeasureText("Press SPACE to start...", 50) / 2, screenHeight / 2, 50, DARKGREEN);
         }
-        drawParticleSystem(&particleSystem);
+        for (int e = 0; e < MAX_EMITTERS; e++)
+        {
+            if (!emitters[e].active)
+                continue;
+            drawParticleSystem(emitters[e].particleSys);
+        }
         EndDrawing();
     }
 
@@ -363,7 +379,7 @@ bool paddleCollision(Ball *ball, Paddle *paddle)
 {
     Vector2 center = {ball->x, ball->y};
     paddle->collisionRect = getRect(paddle->x, paddle->y, paddle->width, paddle->height);
-    if (CheckCollisionCircleRec(center, ball->radius, paddle->collisionRect) && ball->y <= paddle->y - paddle->height / 2)
+    if (CheckCollisionCircleRec(center, ball->radius, paddle->collisionRect) && ball->y <= paddle->y)
     {
         // ball.speedX *= -1;
         ball->y = paddle->y - paddle->height / 2 - ball->radius;
@@ -381,7 +397,7 @@ bool paddleCollision(Ball *ball, Paddle *paddle)
     return false;
 }
 
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, ParticleSystem *particleSys)
+void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter emitters[])
 {
     Vector2 center = {ball->x, ball->y};
     Color colors[] = {RED, DARKBLUE, DARKGREEN, BROWN, YELLOW, PURPLE};
@@ -430,7 +446,7 @@ void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, P
                     bricks[i][j].tier--;
                 }
 
-                initParticleSystem(particleSys, bricks[i][j].collisionRect, 10, 0.5, 0.05, colors[colorIndex]);
+                initEmitter(emitters, bricks[i][j].collisionRect, 5, 0.6, 0.005, colors[colorIndex]);
                 return;
             }
         }
@@ -438,13 +454,26 @@ void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, P
     return;
 }
 
-void initParticleSystem(ParticleSystem *particleSystem, Rectangle area, float radius, float gravity, float fade, Color color)
+void initEmitter(Emitter emitters[], Rectangle area, float radius, float gravity, float fade, Color color)
 {
-    particleSystem->area = area;
-    particleSystem->radius = radius;
-    particleSystem->color = color;
-    particleSystem->fade = fade;
-    particleSystem->gravity = gravity;
+    for (int e = 0; e < MAX_EMITTERS; e++)
+    {
+        if (!emitters[e].active)
+        {
+            emitters[e].active = true;
+            emitters[e].particleSys.radius = radius;
+            emitters[e].particleSys.color = color;
+            emitters[e].particleSys.fade = fade;
+            emitters[e].particleSys.gravity = gravity;
+            emitters[e].particleSys.area = area;
+            initParticleSystem(&emitters[e].particleSys);
+            e = MAX_EMITTERS;
+        }
+    }
+}
+
+void initParticleSystem(ParticleSystem *particleSystem)
+{
     for (int i = 0; i < MAX_PARTICLES; i++)
     {
         particleSystem->particles[i].position = (Vector2){GetRandomValue(particleSystem->area.x, particleSystem->area.x + particleSystem->area.width), GetRandomValue(particleSystem->area.y, particleSystem->area.y + particleSystem->area.height)};
@@ -455,27 +484,36 @@ void initParticleSystem(ParticleSystem *particleSystem, Rectangle area, float ra
     }
 }
 
-void updateParticleSystem(ParticleSystem *particleSystem)
+void updateParticleSystem(Emitter emitters[])
 {
-    for (int i = 0; i < MAX_PARTICLES; i++)
+    for (int e = 0; e < MAX_EMITTERS; e++)
     {
-        if (!particleSystem->particles[i].active)
+        if (!emitters[e].active)
             continue;
-        particleSystem->particles[i].position.x += GetRandomValue(-3, 3);
-        particleSystem->particles[i].position.y += particleSystem->gravity;
-        particleSystem->particles[i].alpha -= particleSystem->fade;
-        if (particleSystem->particles[i].alpha <= 0.0f)
-            particleSystem->particles[i].active = false;
+        emitters[e].active = false;
+        for (int i = 0; i < MAX_PARTICLES; i++)
+        {
+            if (!emitters[e].particleSys.particles[i].active)
+                continue;
+            emitters[e].active = true;
+            emitters[e].particleSys.particles[i].position.x += GetRandomValue(-3, 3);
+            emitters[e].particleSys.particles[i].position.y += emitters[e].particleSys.gravity;
+            emitters[e].particleSys.particles[i].alpha -= emitters[e].particleSys.fade;
+            if (emitters[e].particleSys.particles[i].alpha <= 0.0f)
+                emitters[e].particleSys.particles[i].active = false;
+        }
+
+        e = MAX_EMITTERS;
     }
 }
 
-void drawParticleSystem(ParticleSystem *particleSystem)
+void drawParticleSystem(ParticleSystem particleSys)
 {
     for (int i = 0; i < MAX_PARTICLES; i++)
     {
-        if (!particleSystem->particles[i].active)
+        if (!particleSys.particles[i].active)
             continue;
-        DrawRectangle(particleSystem->particles[i].position.x, particleSystem->particles[i].position.y, particleSystem->radius, particleSystem->radius, Fade(particleSystem->particles[i].color, particleSystem->particles[i].alpha));
+        DrawRectangle(particleSys.particles[i].position.x, particleSys.particles[i].position.y, particleSys.radius, particleSys.radius, Fade(particleSys.particles[i].color, particleSys.particles[i].alpha));
         // DrawCircle(particleSystem->particles[i].position.x, particleSystem->particles[i].position.y, particleSystem->particles[i].radius, Fade(particleSystem->particles[i].color, particleSystem->particles[i].alpha));
     }
 }
