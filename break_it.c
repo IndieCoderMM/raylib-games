@@ -1,15 +1,17 @@
 #include "raylib.h"
 
+#define SIZEOF(A) (sizeof(A) / sizeof(A[0]))
 #define MAX_ROWS 4
 #define MAX_COLS 11
 #define MAX_PARTICLES 50
-#define BALL_SPEED 200
+#define BALL_SPEED 250
 #define PAD_SPEED 700
 #define SPRITE_SIZE 32
 #define BRICK_TIER 5
 #define BRICK_WIDTH 64
 #define BRICK_HEIGHT 32
 #define MAX_EMITTERS 3
+#define PADDLE_TOTAL 4
 
 typedef struct Ball
 {
@@ -62,18 +64,45 @@ typedef struct Emitter
 {
     ParticleSystem particleSys;
     bool active;
+    float fade;
+    float size;
+    float gravity;
 } Emitter;
 
+typedef struct Button
+{
+    Color color;
+    char *name;
+    bool active;
+} Button;
+
+typedef struct Setting
+{
+    int paddle;
+    int difficulty;
+} Setting;
+
+enum State
+{
+    MENU,
+    SETTING,
+    PLAY,
+    GAMEOVER,
+    VICTORY,
+    PAUSED
+};
+
 void initBricks(Brick bricks[MAX_ROWS][MAX_COLS], int level);
-void initEmitter(Emitter emitters[], Rectangle area, float radius, float gravity, float fade, Color color);
+void initEmitter(Emitter *emitter, Rectangle area, Color color);
 void initParticleSystem(ParticleSystem *particleSystem);
 void updateBall(Ball *ball);
 void resetBall(Ball *ball, float x, float y);
+void paddleControl(Paddle *paddle);
 bool paddleCollision(Ball *ball, Paddle *paddle);
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter emitters[]);
+void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter);
 void drawBricks(Brick bricks[MAX_ROWS][MAX_COLS], int rows, int cols, Texture2D spriteSheet, Rectangle srcRect);
 void drawParticleSystem(ParticleSystem particleSys);
-void updateParticleSystem(Emitter emitters[]);
+void updateParticleSystem(Emitter *emitter);
 void drawHearts(Texture2D spriteSheet, Rectangle srcRect, float x, float y, int lives);
 Rectangle getRect(float x, float y, int width, int height);
 
@@ -89,8 +118,7 @@ int main(void)
 
     // Loading Sprites
     Texture2D spriteSheet = LoadTexture("assets/breakOutAssets.png");
-    // const Rectangle srcRectBall = {383, spriteSheet.height - SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE};
-    // const Rectangle srcRectPaddle = {254, spriteSheet.height - SPRITE_SIZE * 3, SPRITE_SIZE * 3, SPRITE_SIZE};
+    const Rectangle srcRectPaddle = {255, spriteSheet.height - SPRITE_SIZE * 1, SPRITE_SIZE * 3, SPRITE_SIZE};
     const Rectangle srcRectBrick = {spriteSheet.width - BRICK_WIDTH * BRICK_TIER, 0, BRICK_WIDTH, BRICK_HEIGHT};
     const Rectangle srcRectHeart = {704, 352, SPRITE_SIZE, SPRITE_SIZE};
 
@@ -100,14 +128,19 @@ int main(void)
     int level = 6;
     int lives = 3;
     int score = 0;
-    bool playing = false;
-    Color buttons[] = {WHITE, WHITE};
-    bool activeBtn = false;
-    bool victory = false;
+    Button menuButtons[] = {
+        (Button){WHITE, "Start", true},
+        (Button){WHITE, "Leaderboard", false}};
 
-    Emitter emitters[MAX_EMITTERS];
+    Emitter *emitters[MAX_EMITTERS];
     for (int e = 0; e < MAX_EMITTERS; e++)
-        emitters[e].active = false;
+    {
+        emitters[e] = (Emitter *)MemAlloc(sizeof(Emitter));
+        emitters[e]->active = false;
+        emitters[e]->fade = 0.05f;
+        emitters[e]->gravity = 0.09f;
+        emitters[e]->size = 5.0f;
+    }
 
     Ball ball;
     ball.x = screenWidth / 2;
@@ -123,11 +156,13 @@ int main(void)
     paddle.speed = PAD_SPEED;
     paddle.width = SPRITE_SIZE * 3;
     paddle.height = SPRITE_SIZE;
-    paddle.srcRect = (Rectangle){254, spriteSheet.height - SPRITE_SIZE * 3, paddle.width, paddle.height};
+    paddle.srcRect = srcRectPaddle;
 
     Brick bricks[MAX_ROWS][MAX_COLS] = {0};
     initBricks(bricks, level);
 
+    enum State gameState = MENU;
+    Setting gameSetting = {0, 0};
     SetTargetFPS(60);
     // Main game loop
     while (!WindowShouldClose())
@@ -135,87 +170,116 @@ int main(void)
         // Debug Code
         if (IsKeyPressed(KEY_R))
             initBricks(bricks, level);
-
-        if (!playing)
+        // Menu Screen
+        if (gameState == MENU)
         {
-            // Start State
+            Color activeColor = MAROON;
+            Color normalColor = BLACK;
+            // Select menu buttons
             if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
             {
-                activeBtn = !activeBtn;
+                for (int i = 0; i < SIZEOF(menuButtons); i++)
+                {
+                    menuButtons[i].active = !menuButtons[i].active;
+                }
             }
-            if (activeBtn)
+            for (int i = 0; i < SIZEOF(menuButtons); i++)
             {
-                buttons[0] = WHITE;
-                buttons[1] = GOLD;
+                if (menuButtons[i].active)
+                    menuButtons[i].color = activeColor;
+                else
+                    menuButtons[i].color = normalColor;
             }
-            else
+            // Switch to Setting Screen
+            if (IsKeyPressed(KEY_ENTER) && menuButtons[0].active)
             {
-                buttons[0] = GOLD;
-                buttons[1] = WHITE;
-            }
-
-            if (IsKeyPressed(KEY_SPACE) && !activeBtn)
-            {
-                playing = true;
-                resetBall(&ball, paddle.x, paddle.y - paddle.height);
+                gameState = SETTING;
             }
         }
-        else
+        // Paddle Select State
+        else if (gameState == SETTING)
+        {
+            if (IsKeyPressed(KEY_RIGHT) && gameSetting.paddle < PADDLE_TOTAL - 1)
+                gameSetting.paddle++;
+            if (IsKeyPressed(KEY_LEFT) && gameSetting.paddle > 0)
+                gameSetting.paddle--;
+
+            paddle.srcRect = (Rectangle){srcRectPaddle.x, srcRectPaddle.y - paddle.height * gameSetting.paddle, paddle.width, paddle.height};
+            if (IsKeyPressed(KEY_ENTER))
+                gameState = PLAY;
+        }
+        // Gameover state
+        else if (gameState == GAMEOVER)
         {
             if (IsKeyPressed(KEY_SPACE))
             {
-                // Restart
-                if (lives <= 0)
-                {
-                    lives = 3;
-                }
-                else if (ball.speedX == 0 && ball.speedY == 0)
-                {
-                    // Resume
-                    ball.speedX = BALL_SPEED;
-                    ball.speedY = -BALL_SPEED;
-                }
-                else if (victory)
-                {
-                    victory = false;
-                    level++;
-                    resetBall(&ball, screenWidth / 2, screenHeight - 150);
-                    initBricks(bricks, level);
-                }
-            }
-            if (ball.speedX == 0 && ball.speedY == 0)
-            {
+                lives = 3;
+                initBricks(bricks, level);
                 resetBall(&ball, paddle.x, paddle.y - paddle.height);
             }
+        }
+        // Victory State
+        else if (gameState == VICTORY)
+        {
+            if (IsKeyPressed(KEY_SPACE))
+            {
+                level++;
+                initBricks(bricks, level);
+                resetBall(&ball, screenWidth / 2, screenHeight - 150);
+            }
+        }
+        // Play State
+        else if (gameState == PLAY)
+        {
+            if (IsKeyPressed(KEY_SPACE))
+            {
+                if (ball.speedX == 0 && ball.speedY == 0)
+                {
+                    ball.speedX = BALL_SPEED;
+                    ball.speedY = BALL_SPEED;
+                }
+                else
+                    gameState = PAUSED;
+            }
 
+            if (ball.speedX == 0 && ball.speedY == 0)
+                resetBall(&ball, paddle.x, paddle.y - paddle.height);
             // Paddle Control
-            if (IsKeyDown(KEY_RIGHT))
-            {
-                paddle.x += paddle.speed * GetFrameTime();
-            }
-            else if (IsKeyDown(KEY_LEFT))
-            {
-                paddle.x -= paddle.speed * GetFrameTime();
-            }
-            if (paddle.x < paddle.width / 2)
-                paddle.x = paddle.width / 2;
-            else if (paddle.x > screenWidth - paddle.width / 2)
-                paddle.x = screenWidth - paddle.width / 2;
+            paddleControl(&paddle);
+            paddleCollision(&ball, &paddle);
 
             // if (paddleCollision(&ball, &paddle))
             //     PlaySound(fxBounce);
-            paddleCollision(&ball, &paddle);
-            brickCollisions(&ball, bricks, &score, emitters);
-            updateBall(&ball);
-            updateParticleSystem(emitters);
 
+            // Get available emitter
+            Emitter *freeEmitter;
+            for (int e = MAX_EMITTERS - 1; e > 0; e--)
+            {
+                freeEmitter = emitters[0];
+                if (!emitters[e]->active)
+                {
+                    emitters[e]->active = true;
+                    freeEmitter = emitters[e];
+                    e = 0;
+                }
+            }
+            brickCollisions(&ball, bricks, &score, freeEmitter);
+            updateBall(&ball);
+            for (int e = 0; e < MAX_EMITTERS; e++)
+            {
+                if (!emitters[e]->active)
+                    continue;
+                updateParticleSystem(emitters[e]);
+            }
             if (ball.y >= screenHeight + SPRITE_SIZE)
             {
                 lives--;
-                resetBall(&ball, screenWidth / 2, screenHeight - 140);
+                if (lives <= 0)
+                    gameState = GAMEOVER;
+                else
+                    resetBall(&ball, screenWidth / 2, screenHeight - 140);
             }
-            // victory will be false if a brick left
-            victory = true;
+            bool victory = true;
             for (int i = 0; i < MAX_ROWS; i++)
             {
                 for (int j = 0; j < MAX_COLS; j++)
@@ -224,56 +288,68 @@ int main(void)
                         victory = false;
                 }
             }
+            if (victory)
+                gameState = VICTORY;
+        }
+        else if (gameState == PAUSED)
+        {
+            if (IsKeyPressed(KEY_SPACE))
+            {
+                gameState = PLAY;
+            }
         }
 
         BeginDrawing();
 
-        ClearBackground(SKYBLUE);
-        DrawFPS(10, 10);
-        if (!playing)
+        if (gameState == MENU)
         {
             ClearBackground(SKYBLUE);
             DrawText("Break-it", screenWidth / 2 - MeasureText("Break-it", 200) / 2 - 3, 13, 200, DARKGRAY);
             DrawText("Break-it", screenWidth / 2 - MeasureText("Break-it", 200) / 2, 10, 200, MAROON);
-            DrawText("Start", screenWidth / 2 - MeasureText("Start", 60) / 2, screenHeight / 2, 60, buttons[0]);
-            DrawText("Highscores", screenWidth / 2 - MeasureText("Highscores", 60) / 2, screenHeight / 2 + 100, 60, buttons[1]);
-
-            EndDrawing();
-            continue;
+            DrawText(menuButtons[0].name, screenWidth / 2 - MeasureText(menuButtons[0].name, 60) / 2, screenHeight / 2, 60, menuButtons[0].color);
+            DrawText(menuButtons[1].name, screenWidth / 2 - MeasureText(menuButtons[1].name, 60) / 2, screenHeight / 2 + 100, 60, menuButtons[1].color);
         }
-        if (lives <= 0)
+        else if (gameState == SETTING)
         {
-            ClearBackground(RAYWHITE);
-            DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 150) / 2, screenHeight / 2, 150, MAROON);
-            EndDrawing();
-            continue;
+            ClearBackground(SKYBLUE);
+            DrawText("Game Setting", 10, 10, 50, MAROON);
+            DrawText("Select Your Paddle", 10, screenHeight - 50, 30, WHITE);
+            DrawTextureRec(spriteSheet, paddle.srcRect, (Vector2){screenWidth / 2 - paddle.width / 2, screenHeight / 2}, WHITE);
         }
-
-        if (victory)
+        else if (gameState == VICTORY)
         {
             ClearBackground(RAYWHITE);
             DrawText("Level Clear!", screenWidth / 2 - 50, 30, 30, BLUE);
-            EndDrawing();
-            continue;
         }
-
-        drawBricks(bricks, MAX_ROWS, MAX_COLS, spriteSheet, srcRectBrick);
-        DrawText(TextFormat("Level: %d", level), screenWidth / 2 - MeasureText("Level: 1", 150) / 2, screenHeight / 2, 150, Fade(WHITE, 0.2));
-        DrawTextureRec(spriteSheet, paddle.srcRect, (Vector2){paddle.x - paddle.width / 2, paddle.y - paddle.height / 2}, WHITE);
-        DrawTextureRec(spriteSheet, ball.srcRect, (Vector2){ball.x - ball.radius, ball.y - ball.radius}, WHITE);
-        DrawText(TextFormat("Scores: %d", score), 10, screenHeight - 50, 40, WHITE);
-        drawHearts(spriteSheet, srcRectHeart, screenWidth - srcRectHeart.width * 4, screenHeight - srcRectHeart.height - 20, lives);
-
-        if (ball.speedX == 0 && ball.speedY == 0 && lives > 0)
+        else if (gameState == PLAY)
         {
+            ClearBackground(SKYBLUE);
+            drawBricks(bricks, MAX_ROWS, MAX_COLS, spriteSheet, srcRectBrick);
+            for (int e = 0; e < MAX_EMITTERS; e++)
+            {
+                drawParticleSystem(emitters[e]->particleSys);
+            }
+            DrawText(TextFormat("Level: %d", level), screenWidth / 2 - MeasureText("Level: 1", 150) / 2, screenHeight / 2, 150, Fade(WHITE, 0.2));
+
+            DrawTextureRec(spriteSheet, ball.srcRect, (Vector2){ball.x - ball.radius, ball.y - ball.radius}, WHITE);
+            DrawTextureRec(spriteSheet, paddle.srcRect, (Vector2){paddle.x - paddle.width / 2, paddle.y - paddle.height / 2}, WHITE);
+
+            DrawText(TextFormat("Scores: %d", score), 10, screenHeight - 50, 40, WHITE);
+            drawHearts(spriteSheet, srcRectHeart, screenWidth - srcRectHeart.width * 4, screenHeight - srcRectHeart.height - 20, lives);
+        }
+        else if (gameState == GAMEOVER)
+        {
+            ClearBackground(RAYWHITE);
+            DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 150) / 2, screenHeight / 2, 150, MAROON);
+
             DrawText("Press SPACE to start...", screenWidth / 2 - MeasureText("Press SPACE to start...", 50) / 2, screenHeight / 2, 50, DARKGREEN);
         }
-        for (int e = 0; e < MAX_EMITTERS; e++)
+        else
         {
-            if (!emitters[e].active)
-                continue;
-            drawParticleSystem(emitters[e].particleSys);
+            DrawText("Paused II", screenWidth / 2 - MeasureText("Paused II", 100) / 2, screenHeight / 2, 100, DARKGREEN);
+            DrawText("Press SPACE to resume...", screenWidth / 2 - MeasureText("Press SPACE to resume...", 50) / 2, screenHeight / 2 + 200, 50, DARKGREEN);
         }
+        DrawFPS(10, 10);
         EndDrawing();
     }
 
@@ -345,6 +421,22 @@ void drawBricks(Brick bricks[MAX_ROWS][MAX_COLS], int rows, int cols, Texture2D 
     }
 }
 
+void paddleControl(Paddle *paddle)
+{
+    if (IsKeyDown(KEY_RIGHT))
+    {
+        paddle->x += paddle->speed * GetFrameTime();
+    }
+    else if (IsKeyDown(KEY_LEFT))
+    {
+        paddle->x -= paddle->speed * GetFrameTime();
+    }
+    if (paddle->x < paddle->width / 2)
+        paddle->x = paddle->width / 2;
+    else if (paddle->x > GetScreenWidth() - paddle->width / 2)
+        paddle->x = GetScreenWidth() - paddle->width / 2;
+}
+
 void updateBall(Ball *ball)
 {
     ball->x += ball->speedX * GetFrameTime();
@@ -379,25 +471,28 @@ bool paddleCollision(Ball *ball, Paddle *paddle)
 {
     Vector2 center = {ball->x, ball->y};
     paddle->collisionRect = getRect(paddle->x, paddle->y, paddle->width, paddle->height);
-    if (CheckCollisionCircleRec(center, ball->radius, paddle->collisionRect) && ball->y <= paddle->y)
+    if (CheckCollisionCircleRec(center, ball->radius, paddle->collisionRect) && ball->y <= paddle->y + paddle->height / 2)
     {
+
         // ball.speedX *= -1;
         ball->y = paddle->y - paddle->height / 2 - ball->radius;
         ball->speedY *= -1;
-        if (ball->x < paddle->x && ball->speedX < 0)
+
+        if (ball->speedX < 0 && ball->x < paddle->x)
         {
             ball->speedX = -BALL_SPEED + (paddle->x - ball->x) * -5;
         }
-        else if (ball->x > paddle->x && ball->speedX > 0)
+        else if (ball->speedX > 0 && ball->x > paddle->x)
         {
             ball->speedX = BALL_SPEED + (ball->x - paddle->x) * 5;
         }
+
         return true;
     }
     return false;
 }
 
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter emitters[])
+void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter)
 {
     Vector2 center = {ball->x, ball->y};
     Color colors[] = {RED, DARKBLUE, DARKGREEN, BROWN, YELLOW, PURPLE};
@@ -446,7 +541,7 @@ void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, E
                     bricks[i][j].tier--;
                 }
 
-                initEmitter(emitters, bricks[i][j].collisionRect, 5, 0.6, 0.005, colors[colorIndex]);
+                initEmitter(emitter, bricks[i][j].collisionRect, colors[colorIndex]);
                 return;
             }
         }
@@ -454,22 +549,16 @@ void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, E
     return;
 }
 
-void initEmitter(Emitter emitters[], Rectangle area, float radius, float gravity, float fade, Color color)
+void initEmitter(Emitter *emitter, Rectangle area, Color color)
 {
-    for (int e = 0; e < MAX_EMITTERS; e++)
-    {
-        if (!emitters[e].active)
-        {
-            emitters[e].active = true;
-            emitters[e].particleSys.radius = radius;
-            emitters[e].particleSys.color = color;
-            emitters[e].particleSys.fade = fade;
-            emitters[e].particleSys.gravity = gravity;
-            emitters[e].particleSys.area = area;
-            initParticleSystem(&emitters[e].particleSys);
-            e = MAX_EMITTERS;
-        }
-    }
+
+    emitter->active = true;
+    emitter->particleSys.radius = emitter->size;
+    emitter->particleSys.color = color;
+    emitter->particleSys.fade = emitter->fade;
+    emitter->particleSys.gravity = emitter->gravity;
+    emitter->particleSys.area = area;
+    initParticleSystem(&emitter->particleSys);
 }
 
 void initParticleSystem(ParticleSystem *particleSystem)
@@ -478,32 +567,26 @@ void initParticleSystem(ParticleSystem *particleSystem)
     {
         particleSystem->particles[i].position = (Vector2){GetRandomValue(particleSystem->area.x, particleSystem->area.x + particleSystem->area.width), GetRandomValue(particleSystem->area.y, particleSystem->area.y + particleSystem->area.height)};
         particleSystem->particles[i].color = particleSystem->color;
-        particleSystem->particles[i].alpha = 0.5f;
+        particleSystem->particles[i].alpha = 1.0f;
         particleSystem->particles[i].radius = particleSystem->radius;
         particleSystem->particles[i].active = true;
     }
 }
 
-void updateParticleSystem(Emitter emitters[])
+void updateParticleSystem(Emitter *emitter)
 {
-    for (int e = 0; e < MAX_EMITTERS; e++)
-    {
-        if (!emitters[e].active)
-            continue;
-        emitters[e].active = false;
-        for (int i = 0; i < MAX_PARTICLES; i++)
-        {
-            if (!emitters[e].particleSys.particles[i].active)
-                continue;
-            emitters[e].active = true;
-            emitters[e].particleSys.particles[i].position.x += GetRandomValue(-3, 3);
-            emitters[e].particleSys.particles[i].position.y += emitters[e].particleSys.gravity;
-            emitters[e].particleSys.particles[i].alpha -= emitters[e].particleSys.fade;
-            if (emitters[e].particleSys.particles[i].alpha <= 0.0f)
-                emitters[e].particleSys.particles[i].active = false;
-        }
 
-        e = MAX_EMITTERS;
+    emitter->active = false;
+    for (int i = 0; i < MAX_PARTICLES; i++)
+    {
+        if (!emitter->particleSys.particles[i].active)
+            continue;
+        emitter->active = true;
+        emitter->particleSys.particles[i].position.x += GetRandomValue(-3, 3);
+        emitter->particleSys.particles[i].position.y += emitter->particleSys.gravity;
+        emitter->particleSys.particles[i].alpha -= emitter->particleSys.fade;
+        if (emitter->particleSys.particles[i].alpha <= 0.0f)
+            emitter->particleSys.particles[i].active = false;
     }
 }
 
@@ -531,7 +614,7 @@ void drawHearts(Texture2D spriteSheet, Rectangle srcRect, float x, float y, int 
         {
             heart = (Rectangle){srcRect.x, srcRect.y + 32 * 2, srcRect.width, srcRect.height};
         }
-        Vector2 pos = {x + heart.width * i, y};
+        Vector2 pos = {x + (heart.width + 2) * i, y};
         DrawTextureRec(spriteSheet, heart, pos, WHITE);
     }
 }
