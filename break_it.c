@@ -82,6 +82,14 @@ typedef struct Setting
     int difficulty;
 } Setting;
 
+typedef struct ScoreBoard
+{
+    const char **scoreList;
+    const char *fileData;
+    int scoreData[10];
+    int storage;
+} ScoreBoard;
+
 enum State
 {
     MENU,
@@ -89,7 +97,7 @@ enum State
     PLAY,
     GAMEOVER,
     VICTORY,
-    SCORES,
+    SCOREBOARD,
     PAUSED
 };
 
@@ -107,6 +115,8 @@ void updateParticleSystem(Emitter *emitter);
 void drawHearts(Texture2D spriteSheet, Rectangle srcRect, float x, float y, int lives);
 void switchButtons(Button buttons[], int size, Color activeColor, Color normalColor);
 void drawButtons(Button buttons[], int total, int fontSize);
+void loadScoreData(ScoreBoard *scoreboard, char *fileName);
+void appendHighscore(ScoreBoard *scoreboard, int score);
 Rectangle getRect(float x, float y, int width, int height);
 
 void debugPrint(int val, int x, int y);
@@ -115,6 +125,7 @@ int main(void)
 {
     const int screenWidth = 900;
     const int screenHeight = 550;
+    char *scoreFileName = "score_board.txt";
 
     InitWindow(screenWidth, screenHeight, "Wall Break");
     // InitAudioDevice();
@@ -131,6 +142,11 @@ int main(void)
     int level = 1;
     int lives = 3;
     int score = 0;
+    ScoreBoard scoreboard;
+    scoreboard.storage = 5;
+    for (int i = 0; i < scoreboard.storage; i++)
+        scoreboard.scoreData[i] = 0;
+    loadScoreData(&scoreboard, scoreFileName);
     Button menuButtons[] = {
         (Button){WHITE, "Start", true},
         (Button){WHITE, "Leaderboard", false}};
@@ -185,7 +201,7 @@ int main(void)
                 if (menuButtons[0].active)
                     gameState = SETTING;
                 else
-                    gameState = SCORES;
+                    gameState = SCOREBOARD;
             }
         }
         // Paddle Select State
@@ -198,7 +214,11 @@ int main(void)
 
             paddle.srcRect = (Rectangle){srcRectPaddle.x, srcRectPaddle.y - paddle.height * gameSetting.paddle, paddle.width, paddle.height};
             if (IsKeyPressed(KEY_ENTER))
+            {
+                initBricks(bricks, level);
+                resetBall(&ball, screenWidth / 2, screenHeight - 150);
                 gameState = PLAY;
+            }
         }
         // Gameover state
         else if (gameState == GAMEOVER)
@@ -206,13 +226,18 @@ int main(void)
             menuButtons[0].name = "Play Again";
             menuButtons[1].name = "Main Menu";
             switchButtons(menuButtons, SIZEOF(menuButtons), GOLD, WHITE);
-            if (IsKeyPressed(KEY_ENTER) && menuButtons[0].active)
+            if (IsKeyPressed(KEY_ENTER))
             {
-                lives = 3;
-                score = 0;
-                initBricks(bricks, level);
-                resetBall(&ball, paddle.x, paddle.y - paddle.height);
-                gameState = PLAY;
+                if (menuButtons[1].active)
+                    gameState = SCOREBOARD;
+                else
+                {
+                    lives = 3;
+                    score = 0;
+                    initBricks(bricks, level);
+                    resetBall(&ball, paddle.x, paddle.y - paddle.height);
+                    gameState = PLAY;
+                }
             }
         }
         // Victory State
@@ -222,12 +247,26 @@ int main(void)
             menuButtons[1].name = "Leaderboards";
 
             switchButtons(menuButtons, SIZEOF(menuButtons), VIOLET, BLACK);
-            if (IsKeyPressed(KEY_ENTER) && menuButtons[0].active)
+            if (IsKeyPressed(KEY_ENTER))
             {
-                level++;
-                initBricks(bricks, level);
-                resetBall(&ball, screenWidth / 2, screenHeight - 150);
-                gameState = PLAY;
+                if (menuButtons[1].active)
+                {
+                    gameState = SCOREBOARD;
+                }
+                else
+                {
+
+                    initBricks(bricks, level);
+                    resetBall(&ball, screenWidth / 2, screenHeight - 150);
+                    gameState = PLAY;
+                }
+            }
+        }
+        else if (gameState == SCOREBOARD)
+        {
+            if (IsKeyPressed(KEY_ENTER))
+            {
+                gameState = MENU;
             }
         }
         // Play State
@@ -291,7 +330,12 @@ int main(void)
                 }
             }
             if (victory)
+            {
                 gameState = VICTORY;
+                level++;
+                score += (level * 100);
+                appendHighscore(&scoreboard, score);
+            }
         }
         else if (gameState == PAUSED)
         {
@@ -347,6 +391,17 @@ int main(void)
             DrawText("Game Over!", screenWidth / 2 - MeasureText("Game Over!", 150) / 2, 100, 150, RED);
             drawButtons(menuButtons, SIZEOF(menuButtons), 70);
         }
+        else if (gameState == SCOREBOARD)
+        {
+            ClearBackground(DARKGRAY);
+            DrawText("Leaderboard", screenWidth / 2 - MeasureText("Leaderboard", 70) / 2, 10, 70, BLUE);
+            for (int i = 0; i < scoreboard.storage; i++)
+            {
+                DrawText(TextFormat("[ %4d ]\n", scoreboard.scoreData[i]), screenWidth / 2, screenHeight / 2 + 50 * i, 40, WHITE);
+            }
+
+            DrawText("Main Menu", 10, screenHeight - 80, 40, ORANGE);
+        }
         else
         {
             DrawText("Paused II", screenWidth / 2 - MeasureText("Paused II", 100) / 2, screenHeight / 2, 100, DARKGREEN);
@@ -361,6 +416,37 @@ int main(void)
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
+}
+
+void loadScoreData(ScoreBoard *scoreboard, char *fileName)
+{
+    if (FileExists(fileName))
+    {
+        scoreboard->fileData = LoadFileText(fileName);
+    }
+    else
+        scoreboard->fileData = "0000\n0000\n0000\n0000\n0000\n";
+
+    scoreboard->scoreList = TextSplit(scoreboard->fileData, '\n', &scoreboard->storage);
+
+    for (int i = 0; i < scoreboard->storage; i++)
+    {
+        scoreboard->scoreData[i] = TextToInteger(scoreboard->scoreList[i]);
+    }
+}
+
+void appendHighscore(ScoreBoard *scoreboard, int score)
+{
+    scoreboard->scoreData[scoreboard->storage] = score;
+    for (int i = scoreboard->storage; i > 0; i--)
+    {
+        if (scoreboard->scoreData[i] > scoreboard->scoreData[i - 1])
+        {
+            int temp = scoreboard->scoreData[i - 1];
+            scoreboard->scoreData[i - 1] = scoreboard->scoreData[i];
+            scoreboard->scoreData[i] = temp;
+        }
+    }
 }
 
 void initBricks(Brick bricks[MAX_ROWS][MAX_COLS], int level)
