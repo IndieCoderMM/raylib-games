@@ -147,7 +147,7 @@ int main(void)
     Sound fxPause = LoadSound("assets/pauseFx.wav");
     Sound fxDisable = LoadSound("assets/disableFx.wav");
 
-    int level = 1;
+    int level = 4;
     int lives = 3;
     int score = 0;
     ScoreBoard scoreboard;
