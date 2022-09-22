@@ -4,3 +4,4 @@
 /textures_particles_blending.c
 /textures_sprite_anim.c
 /textures_sprite_button.c
+*.txt
