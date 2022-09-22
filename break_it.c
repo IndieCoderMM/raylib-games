@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "stdio.h"
 
 #define SIZEOF(A) (sizeof(A) / sizeof(A[0]))
 #define MAX_ROWS 4
@@ -104,19 +105,20 @@ enum State
 void initBricks(Brick bricks[MAX_ROWS][MAX_COLS], int level);
 void initEmitter(Emitter *emitter, Rectangle area, Color color);
 void initParticleSystem(ParticleSystem *particleSystem);
-void updateBall(Ball *ball);
+bool updateBall(Ball *ball);
 void resetBall(Ball *ball, float x, float y);
 void paddleControl(Paddle *paddle);
 bool paddleCollision(Ball *ball, Paddle *paddle);
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter);
+bool brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter);
 void drawBricks(Brick bricks[MAX_ROWS][MAX_COLS], int rows, int cols, Texture2D spriteSheet, Rectangle srcRect);
 void drawParticleSystem(ParticleSystem particleSys);
 void updateParticleSystem(Emitter *emitter);
 void drawHearts(Texture2D spriteSheet, Rectangle srcRect, float x, float y, int lives);
-void switchButtons(Button buttons[], int size, Color activeColor, Color normalColor);
+bool switchButtons(Button buttons[], int size, Color activeColor, Color normalColor);
 void drawButtons(Button buttons[], int total, int fontSize);
 void loadScoreData(ScoreBoard *scoreboard, char *fileName);
 void appendHighscore(ScoreBoard *scoreboard, int score);
+void saveScoreData(ScoreBoard *scoreboard, char *filename);
 Rectangle getRect(float x, float y, int width, int height);
 
 void debugPrint(int val, int x, int y);
@@ -128,7 +130,7 @@ int main(void)
     char *scoreFileName = "score_board.txt";
 
     InitWindow(screenWidth, screenHeight, "Wall Break");
-    // InitAudioDevice();
+    InitAudioDevice();
 
     // Loading Sprites
     Texture2D spriteSheet = LoadTexture("assets/breakOutAssets.png");
@@ -137,7 +139,13 @@ int main(void)
     const Rectangle srcRectHeart = {704, 352, SPRITE_SIZE, SPRITE_SIZE};
 
     // Loading SFX
-    // Sound fxBounce = LoadSound("assets/buttonfx.wav");
+    Sound fxBounce = LoadSound("assets/buttonFx.wav");
+    Sound fxHit = LoadSound("assets/hitFx.wav");
+    Sound fxFall = LoadSound("assets/fallFx.wav");
+    Sound fxSelect = LoadSound("assets/menuFx.wav");
+    Sound fxImpact = LoadSound("assets/impactFx.wav");
+    Sound fxPause = LoadSound("assets/pauseFx.wav");
+    Sound fxDisable = LoadSound("assets/disableFx.wav");
 
     int level = 1;
     int lives = 3;
@@ -194,10 +202,12 @@ int main(void)
         {
             menuButtons[0].name = "Start";
             menuButtons[1].name = "Leaderboard";
-            switchButtons(menuButtons, SIZEOF(menuButtons), RED, WHITE);
+            if (switchButtons(menuButtons, SIZEOF(menuButtons), RED, WHITE))
+                PlaySound(fxSelect);
             // Switch to Setting Screen
             if (IsKeyPressed(KEY_ENTER))
             {
+                PlaySound(fxSelect);
                 if (menuButtons[0].active)
                     gameState = SETTING;
                 else
@@ -207,16 +217,36 @@ int main(void)
         // Paddle Select State
         else if (gameState == SETTING)
         {
-            if (IsKeyPressed(KEY_RIGHT) && gameSetting.paddle < PADDLE_TOTAL - 1)
-                gameSetting.paddle++;
-            if (IsKeyPressed(KEY_LEFT) && gameSetting.paddle > 0)
-                gameSetting.paddle--;
+            if (IsKeyPressed(KEY_RIGHT))
+            {
+                if (gameSetting.paddle < PADDLE_TOTAL - 1)
+                {
+                    gameSetting.paddle++;
+                    PlaySound(fxSelect);
+                }
+                else
+                    PlaySound(fxDisable);
+            }
+
+            if (IsKeyPressed(KEY_LEFT))
+            {
+                if (gameSetting.paddle > 0)
+                {
+                    gameSetting.paddle--;
+                    PlaySound(fxSelect);
+                }
+                else
+                {
+                    PlaySound(fxDisable);
+                }
+            }
 
             paddle.srcRect = (Rectangle){srcRectPaddle.x, srcRectPaddle.y - paddle.height * gameSetting.paddle, paddle.width, paddle.height};
             if (IsKeyPressed(KEY_ENTER))
             {
+                PlaySound(fxSelect);
                 initBricks(bricks, level);
-                resetBall(&ball, screenWidth / 2, screenHeight - 150);
+                resetBall(&ball, paddle.x, paddle.y - paddle.height - ball.radius);
                 gameState = PLAY;
             }
         }
@@ -225,17 +255,21 @@ int main(void)
         {
             menuButtons[0].name = "Play Again";
             menuButtons[1].name = "Main Menu";
-            switchButtons(menuButtons, SIZEOF(menuButtons), GOLD, WHITE);
+            if (switchButtons(menuButtons, SIZEOF(menuButtons), GOLD, WHITE))
+                PlaySound(fxSelect);
             if (IsKeyPressed(KEY_ENTER))
             {
+                PlaySound(fxSelect);
+                ;
                 if (menuButtons[1].active)
-                    gameState = SCOREBOARD;
+                    gameState = MENU;
                 else
                 {
                     lives = 3;
                     score = 0;
+                    level = 1;
                     initBricks(bricks, level);
-                    resetBall(&ball, paddle.x, paddle.y - paddle.height);
+                    resetBall(&ball, paddle.x, paddle.y - paddle.height - ball.radius);
                     gameState = PLAY;
                 }
             }
@@ -246,9 +280,11 @@ int main(void)
             menuButtons[0].name = "Next Level";
             menuButtons[1].name = "Leaderboards";
 
-            switchButtons(menuButtons, SIZEOF(menuButtons), VIOLET, BLACK);
+            if (switchButtons(menuButtons, SIZEOF(menuButtons), VIOLET, BLACK))
+                PlaySound(fxSelect);
             if (IsKeyPressed(KEY_ENTER))
             {
+                PlaySound(fxSelect);
                 if (menuButtons[1].active)
                 {
                     gameState = SCOREBOARD;
@@ -257,7 +293,7 @@ int main(void)
                 {
 
                     initBricks(bricks, level);
-                    resetBall(&ball, screenWidth / 2, screenHeight - 150);
+                    resetBall(&ball, paddle.x, paddle.y - paddle.height - ball.radius);
                     gameState = PLAY;
                 }
             }
@@ -266,6 +302,7 @@ int main(void)
         {
             if (IsKeyPressed(KEY_ENTER))
             {
+                PlaySound(fxSelect);
                 gameState = MENU;
             }
         }
@@ -274,23 +311,28 @@ int main(void)
         {
             if (IsKeyPressed(KEY_SPACE))
             {
+
                 if (ball.speedX == 0 && ball.speedY == 0)
                 {
+                    PlaySound(fxSelect);
                     ball.speedX = BALL_SPEED;
                     ball.speedY = BALL_SPEED;
                 }
                 else
+                {
+                    PlaySound(fxPause);
                     gameState = PAUSED;
+                }
             }
 
             if (ball.speedX == 0 && ball.speedY == 0)
-                resetBall(&ball, paddle.x, paddle.y - paddle.height);
+                resetBall(&ball, paddle.x, paddle.y - paddle.height - ball.radius);
             // Paddle Control
             paddleControl(&paddle);
-            paddleCollision(&ball, &paddle);
+            // paddleCollision(&ball, &paddle);
 
-            // if (paddleCollision(&ball, &paddle))
-            //     PlaySound(fxBounce);
+            if (paddleCollision(&ball, &paddle))
+                PlaySound(fxBounce);
 
             // Get available emitter
             Emitter *freeEmitter;
@@ -304,8 +346,10 @@ int main(void)
                     e = 0;
                 }
             }
-            brickCollisions(&ball, bricks, &score, freeEmitter);
-            updateBall(&ball);
+            if (brickCollisions(&ball, bricks, &score, freeEmitter))
+                PlaySound(fxImpact);
+            if (updateBall(&ball))
+                PlaySound(fxHit);
             for (int e = 0; e < MAX_EMITTERS; e++)
             {
                 if (!emitters[e]->active)
@@ -314,11 +358,12 @@ int main(void)
             }
             if (ball.y >= screenHeight + SPRITE_SIZE)
             {
+                PlaySound(fxFall);
                 lives--;
                 if (lives <= 0)
                     gameState = GAMEOVER;
                 else
-                    resetBall(&ball, screenWidth / 2, screenHeight - 140);
+                    resetBall(&ball, paddle.x, paddle.y - paddle.height - ball.radius);
             }
             bool victory = true;
             for (int i = 0; i < MAX_ROWS; i++)
@@ -341,6 +386,7 @@ int main(void)
         {
             if (IsKeyPressed(KEY_SPACE))
             {
+                PlaySound(fxPause);
                 gameState = PLAY;
             }
         }
@@ -397,7 +443,8 @@ int main(void)
             DrawText("Leaderboard", screenWidth / 2 - MeasureText("Leaderboard", 70) / 2, 10, 70, BLUE);
             for (int i = 0; i < scoreboard.storage; i++)
             {
-                DrawText(TextFormat("[ %4d ]\n", scoreboard.scoreData[i]), screenWidth / 2, screenHeight / 2 + 50 * i, 40, WHITE);
+                const char *scoreText = TextFormat("%d.%4d\n", i + 1, scoreboard.scoreData[i]);
+                DrawText(scoreText, screenWidth / 2 - MeasureText(scoreText, 40), (screenHeight / 2 - 100) + 50 * i, 40, WHITE);
             }
 
             DrawText("Main Menu", 10, screenHeight - 80, 40, ORANGE);
@@ -409,7 +456,7 @@ int main(void)
         }
         EndDrawing();
     }
-
+    saveScoreData(&scoreboard, scoreFileName);
     UnloadTexture(spriteSheet);
     // UnloadSound(fxBounce);
     CloseAudioDevice();
@@ -447,6 +494,24 @@ void appendHighscore(ScoreBoard *scoreboard, int score)
             scoreboard->scoreData[i] = temp;
         }
     }
+}
+
+void saveScoreData(ScoreBoard *scoreboard, char *filename)
+{
+    // Not working properly
+    // TODO: Save score data into a file
+    for (int i = 0; i < scoreboard->storage; i++)
+    {
+        scoreboard->scoreList[i] = TextFormat("%d", scoreboard->scoreData[i]);
+        printf(scoreboard->scoreList[i]);
+    }
+    char *delimiter = "\n";
+    char *endOfData = "\0";
+    int pos = -1;
+    scoreboard->fileData = TextJoin(scoreboard->scoreList, scoreboard->storage, delimiter);
+    TextAppend((char *)scoreboard->fileData, endOfData, &pos);
+    printf(scoreboard->fileData);
+    SaveFileText(filename, (char *)scoreboard->fileData);
 }
 
 void initBricks(Brick bricks[MAX_ROWS][MAX_COLS], int level)
@@ -525,8 +590,9 @@ void paddleControl(Paddle *paddle)
         paddle->x = GetScreenWidth() - paddle->width / 2;
 }
 
-void updateBall(Ball *ball)
+bool updateBall(Ball *ball)
 {
+    bool hitWall = false;
     ball->x += ball->speedX * GetFrameTime();
     ball->y += ball->speedY * GetFrameTime();
     if (ball->y <= ball->radius)
@@ -539,12 +605,15 @@ void updateBall(Ball *ball)
     {
         ball->x = ball->radius;
         ball->speedX *= -1;
+        hitWall = true;
     }
     else if (ball->x >= GetScreenWidth() - ball->radius)
     {
         ball->x = GetScreenWidth() - ball->radius;
         ball->speedX *= -1;
+        hitWall = true;
     }
+    return hitWall;
 }
 
 void resetBall(Ball *ball, float x, float y)
@@ -580,7 +649,7 @@ bool paddleCollision(Ball *ball, Paddle *paddle)
     return false;
 }
 
-void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter)
+bool brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, Emitter *emitter)
 {
     Vector2 center = {ball->x, ball->y};
     Color colors[] = {RED, DARKBLUE, DARKGREEN, BROWN, YELLOW, PURPLE};
@@ -630,22 +699,24 @@ void brickCollisions(Ball *ball, Brick bricks[MAX_ROWS][MAX_COLS], int *score, E
                 }
 
                 initEmitter(emitter, bricks[i][j].collisionRect, colors[colorIndex]);
-                return;
+                return true;
             }
         }
     }
-    return;
+    return false;
 }
 
-void switchButtons(Button buttons[], int size, Color activeColor, Color normalColor)
+bool switchButtons(Button buttons[], int size, Color activeColor, Color normalColor)
 {
     // Select menu buttons
+    bool pressed = false;
     if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
     {
         for (int i = 0; i < size; i++)
         {
             buttons[i].active = !buttons[i].active;
         }
+        pressed = true;
     }
     for (int i = 0; i < size; i++)
     {
@@ -654,6 +725,7 @@ void switchButtons(Button buttons[], int size, Color activeColor, Color normalCo
         else
             buttons[i].color = normalColor;
     }
+    return pressed;
 }
 
 void drawButtons(Button buttons[], int total, int fontSize)
