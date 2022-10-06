@@ -133,19 +133,19 @@ int main(void)
     InitAudioDevice();
 
     // Loading Sprites
-    Texture2D spriteSheet = LoadTexture("assets/breakOutAssets.png");
+    Texture2D spriteSheet = LoadTexture("BreakOut/resources/sprites/breakOutAssets.png");
     const Rectangle srcRectPaddle = {255, spriteSheet.height - SPRITE_SIZE * 1, SPRITE_SIZE * 3, SPRITE_SIZE};
     const Rectangle srcRectBrick = {spriteSheet.width - BRICK_WIDTH * BRICK_TIER, 0, BRICK_WIDTH, BRICK_HEIGHT};
     const Rectangle srcRectHeart = {704, 352, SPRITE_SIZE, SPRITE_SIZE};
 
     // Loading SFX
-    Sound fxBounce = LoadSound("assets/buttonFx.wav");
-    Sound fxHit = LoadSound("assets/hitFx.wav");
-    Sound fxFall = LoadSound("assets/fallFx.wav");
-    Sound fxSelect = LoadSound("assets/menuFx.wav");
-    Sound fxImpact = LoadSound("assets/impactFx.wav");
-    Sound fxPause = LoadSound("assets/pauseFx.wav");
-    Sound fxDisable = LoadSound("assets/disableFx.wav");
+    Sound fxBounce = LoadSound("BreakOut/resources/audio/buttonFx.wav");
+    Sound fxHit = LoadSound("BreakOut/resources/audio/hitFx.wav");
+    Sound fxFall = LoadSound("BreakOut/resources/audio/fallFx.wav");
+    Sound fxSelect = LoadSound("BreakOut/resources/audio/menuFx.wav");
+    Sound fxImpact = LoadSound("BreakOut/resources/audio/impactFx.wav");
+    Sound fxPause = LoadSound("BreakOut/resources/audio/pauseFx.wav");
+    Sound fxDisable = LoadSound("BreakOut/resources/audio/disableFx.wav");
 
     int level = 4;
     int lives = 3;
