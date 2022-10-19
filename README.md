@@ -2,6 +2,6 @@
 
 Games created using Raylib library.
 
-## [Break Out](./BreakOut/)
+### :joystick: [Break Out](./BreakOut/)
 
 
