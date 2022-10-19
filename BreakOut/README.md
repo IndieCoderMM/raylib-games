@@ -1,4 +1,4 @@
-# Break Out
+# Break Out Clone
 
 ![Screenshot](screenshots/ss-bout-00.png "Break Out")
 
@@ -8,7 +8,7 @@ This game is one of the GD50 projects, inspired by classic game **Break Out**.
 
 ## Built With
 
-- [Raylib][https://raylib.com]
+- [Raylib](https://raylib.com)
 
 ## Features
 
