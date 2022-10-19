@@ -129,7 +129,7 @@ int main(void)
     const int screenHeight = 550;
     char *scoreFileName = "score_board.txt";
 
-    InitWindow(screenWidth, screenHeight, "Wall Break");
+    InitWindow(screenWidth, screenHeight, "Break Out");
     InitAudioDevice();
 
     // Loading Sprites
@@ -202,7 +202,7 @@ int main(void)
         {
             menuButtons[0].name = "Start";
             menuButtons[1].name = "Leaderboard";
-            if (switchButtons(menuButtons, SIZEOF(menuButtons), RED, WHITE))
+            if (switchButtons(menuButtons, SIZEOF(menuButtons), ORANGE, WHITE))
                 PlaySound(fxSelect);
             // Switch to Setting Screen
             if (IsKeyPressed(KEY_ENTER))
