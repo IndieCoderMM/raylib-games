@@ -8,7 +8,7 @@ This game is one of the GD50 projects, inspired by classic game **Break Out**.
 
 ## Built With
 
-- [Raylib](https://raylib.com)
+- [Raylib](https://www.raylib.com)
 
 ## Features
 
