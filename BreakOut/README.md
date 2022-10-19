@@ -4,10 +4,20 @@
 
 ### Description
 
-$(Your Game Description)
+This game is one of the GD50 projects, inspired by classic game **Break Out**.
 
-### Features
+## Built With
+- [Raylib][https://raylib.com]
 
-- $(Game Feature 01)
-- $(Game Feature 02)
-- $(Game Feature 03)
+## Features
+
+- Spritesheet texture
+- Collision detection
+- Emitters/Particles System
+- Procedural generation
+- Keyboard control
+- Sound effects
+
+### Gameplay
+
+![Demo](https://github.com/IndieCoderMM/git-cloud/blob/master/gifs/break_it_demo.gif)
